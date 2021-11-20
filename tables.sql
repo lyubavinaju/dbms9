@@ -7,8 +7,8 @@ create table Flights
 
 create table Seats
 (
-    PlaneId int not null,
-    SeatNo  int not null,
+    PlaneId int        not null,
+    SeatNo  varchar(4) not null,
     primary key (PlaneId, SeatNo)
 );
 
@@ -20,18 +20,18 @@ create table Users
 
 create table Bought
 (
-    FlightId int not null,
-    SeatNo   int not null,
+    FlightId int        not null,
+    SeatNo   varchar(4) not null,
     primary key (FlightId, SeatNo),
     foreign key (FlightId) references Flights (FlightId)
 );
 
 create table Reserved
 (
-    FlightId int       not null,
-    UserId   int       not null,
-    SeatNo   int       not null,
-    EndTime  timestamp not null,
+    FlightId int        not null,
+    UserId   int        not null,
+    SeatNo   varchar(4) not null,
+    EndTime  timestamp  not null,
     primary key (FlightId, SeatNo),
     foreign key (FlightId) references Flights (FlightId),
     foreign key (UserId) references Users (UserId)
@@ -45,16 +45,16 @@ VALUES (1, 'pass1'),
        (3, 'pass3');
 
 insert into Seats (PlaneId, SeatNo)
-VALUES (10, 100),
-       (10, 101),
-       (10, 102),
-       (20, 200),
-       (20, 201),
-       (20, 202),
-       (20, 206),
-       (20, 208),
-       (20, 218),
-       (30, 300);
+VALUES (10, '100'),
+       (10, '101'),
+       (10, '102'),
+       (20, '200'),
+       (20, '201'),
+       (20, '202'),
+       (20, '206'),
+       (20, '208'),
+       (20, '218'),
+       (30, '300');
 
 insert into Flights (FlightId, FlightTime, PlaneId)
 VALUES (100, make_date(2021, 12, 12), 30),
@@ -63,14 +63,14 @@ VALUES (100, make_date(2021, 12, 12), 30),
        (400, now() - interval '1 day', 20);
 
 insert into Bought (FlightId, SeatNo)
-VALUES (200, 101),
-       (300, 218);
+VALUES (200, '101'),
+       (300, '218');
 
 insert into Reserved (FlightId, UserId, SeatNo, EndTime)
-VALUES (300, 3, 202, now()),
-       (100, 1, 300, now()),
-       (300, 1, 201, now() + interval '1 day'),
-       (300, 1, 208, now() + interval '1 day');
+VALUES (300, 3, '202', now()),
+       (100, 1, '300', now()),
+       (300, 1, '201', now() + interval '1 day'),
+       (300, 1, '208', now() + interval '1 day');
 
 
 
@@ -95,7 +95,7 @@ end;
 $$;
 
 --check that plane has given seat
-create procedure seatExists(in pid int, in sno int, inout res boolean)
+create procedure seatExists(in pid int, in sno varchar(4), inout res boolean)
     language plpgsql as
 $$
 begin
@@ -103,7 +103,7 @@ begin
 end;
 $$;
 
-create procedure seatIsBought(in fid int, in sno int, inout res boolean)
+create procedure seatIsBought(in fid int, in sno varchar(4), inout res boolean)
     language plpgsql as
 $$
 begin
@@ -111,7 +111,7 @@ begin
 end;
 $$;
 
-create procedure seatIsReserved(in fid int, in sno int, inout uid int, inout res boolean)
+create procedure seatIsReserved(in fid int, in sno varchar(4), inout uid int, inout res boolean)
     language plpgsql as
 $$
 declare
@@ -134,7 +134,7 @@ $$;
 
 
 -- 1. FreeSeats(FlightId)
-create function FreeSeats(in fid int) returns int[]
+create function FreeSeats(in fid int) returns varchar(4)[]
     language plpgsql
 as
 $$
@@ -145,7 +145,7 @@ begin
     call flightIsAvailable(fid, pid, fAvailable);
 
     if not fAvailable then
-        return array [] :: int[];
+        return array [] :: varchar(4)[];
     end if;
 
     return array(select s.SeatNo
@@ -164,7 +164,7 @@ $$;
 create function Reserve(in uid int,
                         in pwd varchar(16),
                         in fid int,
-                        in sno int)
+                        in sno varchar(4))
     returns boolean
     language plpgsql as
 $$
@@ -211,7 +211,7 @@ end
 $$;
 
 -- 3. ExtendReservation(UserId, Pass, FlightId, SeatNo)
-create function ExtendReservation(in uid int, in pwd varchar(16), in fid int, in sno int) returns boolean
+create function ExtendReservation(in uid int, in pwd varchar(16), in fid int, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
@@ -254,7 +254,7 @@ end;
 $$;
 
 -- 4. BuyFree(FlightId, SeatNo)
-create function BuyFree(in fid int, in sno int) returns boolean
+create function BuyFree(in fid int, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
@@ -293,7 +293,7 @@ end;
 $$;
 
 --  5.   BuyReserved(UserId, Pass, FlightId, SeatNo)
-create function BuyReserved(in uid int, in pwd varchar(16), in fid int, in sno int) returns boolean
+create function BuyReserved(in uid int, in pwd varchar(16), in fid int, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
@@ -442,13 +442,13 @@ $$
 declare
     pid           int;
     fAvailable    boolean;
-    allSeats      int[];
-    boughtSeats   int[];
-    reservedSeats int[];
-    x             int;
+    allSeats      varchar(4)[];
+    boughtSeats   varchar(4)[];
+    reservedSeats varchar(4)[];
+    x             varchar(4);
     i             int;
-    nextBought    int[];
-    nextReserved  int[];
+    nextBought    varchar(4)[];
+    nextReserved  varchar(4)[];
     curTime       timestamp;
     curs          refcursor;
 
