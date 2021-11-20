@@ -60,7 +60,8 @@ insert into Flights (FlightId, FlightTime, PlaneId)
 VALUES (100, make_date(2021, 12, 12), 30),
        (200, make_date(2021, 12, 12), 10),
        (300, make_date(2021, 12, 12), 20),
-       (400, now() - interval '1 day', 20);
+       (400, now() - interval '1 day', 20),
+       (500, now() + interval '1 day', 20);
 
 insert into Bought (FlightId, SeatNo)
 VALUES (200, '101'),
@@ -147,16 +148,18 @@ begin
     if not fAvailable then
         return array [] :: varchar(4)[];
     end if;
-
+    raise notice '%', pid;
     return array(select s.SeatNo
                  from Seats s
                  where s.PlaneId = pid
                      except
                  select r.SeatNo
                  from Reserved r
-                 where r.EndTime >= now() except
+                 where r.EndTime >= now()
+                   and r.FlightId = fid except
                  select b.SeatNo
-                 from Bought b);
+                 from Bought b
+                 where b.FlightId = fid);
 end
 $$;
 
