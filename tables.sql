@@ -1,26 +1,26 @@
 create table Flights
 (
-    FlightId   int primary key,
+    FlightId   integer primary key,
     FlightTime timestamp not null,
-    PlaneId    int       not null
+    PlaneId    integer   not null
 );
 
 create table Seats
 (
-    PlaneId int        not null,
+    PlaneId integer    not null,
     SeatNo  varchar(4) not null,
     primary key (PlaneId, SeatNo)
 );
 
 create table Users
 (
-    UserId int primary key,
-    Pass   varchar(16) not null
+    UserId integer primary key,
+    Pass   varchar(34) not null
 );
 
 create table Bought
 (
-    FlightId int        not null,
+    FlightId integer    not null,
     SeatNo   varchar(4) not null,
     primary key (FlightId, SeatNo),
     foreign key (FlightId) references Flights (FlightId)
@@ -28,8 +28,8 @@ create table Bought
 
 create table Reserved
 (
-    FlightId int        not null,
-    UserId   int        not null,
+    FlightId integer    not null,
+    UserId   integer    not null,
     SeatNo   varchar(4) not null,
     EndTime  timestamp  not null,
     primary key (FlightId, SeatNo),
@@ -40,9 +40,9 @@ create table Reserved
 
 
 insert into Users (UserId, Pass)
-VALUES (1, 'pass1'),
-       (2, 'pass2'),
-       (3, 'pass3');
+VALUES (1, crypt('pass1', gen_salt('md5'))),
+       (2, crypt('pass2', gen_salt('md5'))),
+       (3, crypt('pass3', gen_salt('md5')));
 
 insert into Seats (PlaneId, SeatNo)
 VALUES (10, '100A'),
@@ -77,17 +77,17 @@ VALUES (300, 3, '202A', now()),
 
 
 
-create procedure userExists(IN uid int, IN pwd varchar(16), INOUT res boolean)
+create function userExists(IN uid integer, IN pwd varchar(34))
+    returns boolean
     language plpgsql as
 $$
 begin
-    res
-        = exists(select * from Users u where u.UserId = uid and u.Pass = pwd);
+    return exists(select u.UserId from Users u where u.UserId = uid and u.pass = crypt(pwd, u.pass));
 end;
 $$;
 
 --check that flight is not outdated and find planeId
-create procedure flightIsAvailable(in fid int, inout pid int, inout res boolean)
+create procedure flightIsAvailable(in fid integer, inout pid integer, inout res boolean)
     language plpgsql as
 $$
 declare
@@ -103,25 +103,24 @@ end;
 $$;
 
 --check that plane has given seat
-create procedure seatExists(in pid int, in sno varchar(4), inout res boolean)
+create function seatExists(in pid integer, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 begin
-    res
-        = exists(select * from Seats s where s.PlaneId = pid and s.SeatNo = sno);
+    return exists(select * from Seats s where s.PlaneId = pid and s.SeatNo = sno);
 end;
 $$;
 
-create procedure seatIsBought(in fid int, in sno varchar(4), inout res boolean)
+create function seatIsBought(in fid integer, in sno varchar(4))
+    returns boolean
     language plpgsql as
 $$
 begin
-    res
-        = exists(select * from Bought b where b.FlightId = fid and b.SeatNo = sno);
+    return exists(select * from Bought b where b.FlightId = fid and b.SeatNo = sno);
 end;
 $$;
 
-create procedure seatIsReserved(in fid int, in sno varchar(4), inout uid int, inout res boolean)
+create procedure seatIsReserved(in fid integer, in sno varchar(4), inout uid integer, inout res boolean)
     language plpgsql as
 $$
 declare
@@ -153,23 +152,19 @@ $$;
 
 
 -- 1. FreeSeats(FlightId)
-create function FreeSeats(in fid int) returns varchar(4)[]
+create function FreeSeats(in fid integer) returns varchar(4)[]
     language plpgsql
 as
 $$
 declare
     fAvailable boolean;
-    pid
-               int;
+    pid        integer;
 begin
     call flightIsAvailable(fid, pid, fAvailable);
 
-    if
-        not fAvailable then
+    if not fAvailable then
         return array [] :: varchar(4)[];
     end if;
-    raise
-        notice '%', pid;
     return array(select s.SeatNo
                  from Seats s
                  where s.PlaneId = pid
@@ -185,56 +180,36 @@ end
 $$;
 
 -- 2. Reserve(UserId, Pass, FlightId, SeatNo)
-create function Reserve(in uid int,
-                        in pwd varchar(16),
-                        in fid int,
+create function Reserve(in uid integer,
+                        in pwd varchar(34),
+                        in fid integer,
                         in sno varchar(4))
     returns boolean
     language plpgsql as
 $$
 declare
-    uEx boolean;
-    pid
-        int;
-    fAvailable
-        boolean;
-    seatEx
-        boolean;
-    seatIsBought
-        boolean;
-    seatIsReserved
-        boolean;
-    reservedUid
-        int;
-
+    pid            integer;
+    fAvailable     boolean;
+    seatIsReserved boolean;
+    reservedUid    integer;
 begin
-    call userExists(uid, pwd, uEx);
-    if
-        not uEx then
-        return false;
-    end if;
+    if not userExists(uid, pwd) then return false; end if;
 
     call flightIsAvailable(fid, pid, fAvailable);
-    if
-        not fAvailable then
+    if not fAvailable then
         return false;
     end if;
 
-    call seatExists(pid, sno, seatEx);
-    if
-        not seatEx then
+    if not seatExists(pid, sno) then
         return false;
     end if;
 
-    call seatIsBought(fid, sno, seatIsBought);
-    if
-        seatIsBought then
+    if seatIsBought(fid, sno) then
         return false;
     end if;
 
     call seatIsReserved(fid, sno, reservedUid, seatIsReserved);
-    if
-        seatIsReserved then
+    if seatIsReserved then
         return false;
     end if;
 
@@ -246,51 +221,32 @@ end
 $$;
 
 -- 3. ExtendReservation(UserId, Pass, FlightId, SeatNo)
-create function ExtendReservation(in uid int, in pwd varchar(16), in fid int, in sno varchar(4)) returns boolean
+create function ExtendReservation(in uid integer, in pwd varchar(34), in fid integer, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
-    uEx boolean;
-    pid
-        int;
-    fAvailable
-        boolean;
-    seatEx
-        boolean;
-    seatIsBought
-        boolean;
-    seatIsReserved
-        boolean;
-    reservedUid
-        int;
+    pid            integer;
+    fAvailable     boolean;
+    seatIsReserved boolean;
+    reservedUid    integer;
 begin
-    call userExists(uid, pwd, uEx);
-    if
-        not uEx then
-        return false;
-    end if;
+    if not userExists(uid, pwd) then return false; end if;
 
     call flightIsAvailable(fid, pid, fAvailable);
-    if
-        not fAvailable then
+    if not fAvailable then
         return false;
     end if;
 
-    call seatExists(pId, sno, seatEx);
-    if
-        not seatEx then
+    if not seatExists(pId, sno) then
         return false;
     end if;
 
-    call seatIsBought(fid, sno, seatIsBought);
-    if
-        seatIsBought then
+    if seatIsBought(fid, sno) then
         return false;
     end if;
 
     call seatIsReserved(fid, sno, reservedUid, seatIsReserved);
-    if
-        not seatIsReserved or reservedUid != uid then
+    if not seatIsReserved or reservedUid != uid then
         return false;
     end if;
 
@@ -303,43 +259,30 @@ end;
 $$;
 
 -- 4. BuyFree(FlightId, SeatNo)
-create function BuyFree(in fid int, in sno varchar(4)) returns boolean
+create function BuyFree(in fid integer, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
-    pid int;
-    fAvailable
-        boolean;
-    seatEx
-        boolean;
-    seatIsBought
-        boolean;
-    seatIsReserved
-        boolean;
-    reservedUid
-        int;
+    pid            integer;
+    fAvailable     boolean;
+    seatIsReserved boolean;
+    reservedUid    integer;
 begin
     call flightIsAvailable(fid, pId, fAvailable);
-    if
-        not fAvailable then
+    if not fAvailable then
         return false;
     end if;
 
-    call seatExists(pId, sno, seatEx);
-    if
-        not seatEx then
+    if not seatExists(pId, sno) then
         return false;
     end if;
 
-    call seatIsBought(fid, sno, seatIsBought);
-    if
-        seatIsBought then
+    if seatIsBought(fid, sno) then
         return false;
     end if;
 
     call seatIsReserved(fid, sno, reservedUid, seatIsReserved);
-    if
-        seatIsReserved then
+    if seatIsReserved then
         return false;
     end if;
 
@@ -351,51 +294,32 @@ end;
 $$;
 
 --  5.   BuyReserved(UserId, Pass, FlightId, SeatNo)
-create function BuyReserved(in uid int, in pwd varchar(16), in fid int, in sno varchar(4)) returns boolean
+create function BuyReserved(in uid integer, in pwd varchar(34), in fid integer, in sno varchar(4)) returns boolean
     language plpgsql as
 $$
 declare
-    uEx boolean;
-    pid
-        int;
-    fAvailable
-        boolean;
-    seatEx
-        boolean;
-    seatIsBought
-        boolean;
-    seatIsReserved
-        boolean;
-    reservedUid
-        int;
+    pid            integer;
+    fAvailable     boolean;
+    seatIsReserved boolean;
+    reservedUid    integer;
 begin
-    call userExists(uid, pwd, uEx);
-    if
-        not uEx then
-        return false;
-    end if;
+    if not userExists(uid, pwd) then return false; end if;
 
     call flightIsAvailable(fid, pId, fAvailable);
-    if
-        not fAvailable then
+    if not fAvailable then
         return false;
     end if;
 
-    call seatExists(pId, sno, seatEx);
-    if
-        not seatEx then
+    if not seatExists(pId, sno) then
         return false;
     end if;
 
-    call seatIsBought(fid, sno, seatIsBought);
-    if
-        seatIsBought then
+    if seatIsBought(fid, sno) then
         return false;
     end if;
 
     call seatIsReserved(fid, sno, reservedUid, seatIsReserved);
-    if
-        not seatIsReserved or reservedUid != uid then
+    if not seatIsReserved or reservedUid != uid then
         return false;
     end if;
 
@@ -411,25 +335,21 @@ end;
 $$;
 
 --FlightsStatistics
-create function FlightsStatistics(in uid int, in pwd varchar(16))
+create function FlightsStatistics(in uid integer, in pwd varchar(34))
     returns table
             (
-                FlightId           int,
+                FlightId           integer,
                 CanReserve         boolean,
                 CanBuy             boolean,
-                FreeSeatsCount     int,
+                FreeSeatsCount     integer,
                 ReservedSeatsCount bigint,
                 BoughtSeatsCount   bigint
             )
     language plpgsql
 as
 $$
-declare
-    uEx boolean;
 begin
-    call userExists(uid, pwd, uEx);
-    if
-        not uEx then
+    if not userExists(uid, pwd) then
         return query
             select 0, false, false, 0, cast(0 as bigint), cast(0 as bigint) limit 0;
     else
@@ -460,25 +380,22 @@ end;
 $$;
 
 --FlightStat
-create function FlightStat(in uid int, in pwd varchar(16), in fid int)
+create function FlightStat(in uid integer, in pwd varchar(34), in fid integer)
     returns table
             (
-                FlightId           int,
+                FlightId           integer,
                 CanReserve         boolean,
                 CanBuy             boolean,
-                FreeSeatsCount     int,
+                FreeSeatsCount     integer,
                 ReservedSeatsCount bigint,
                 BoughtSeatsCount   bigint
             )
     language plpgsql
 as
 $$
-declare
-    uEx boolean;
+
 begin
-    call userExists(uid, pwd, uEx);
-    if
-        not uEx then
+    if not userExists(uid, pwd) then
         return query
             select 0, false, false, 0, cast(0 as bigint), cast(0 as bigint) limit 0;
     else
@@ -510,33 +427,22 @@ end;
 $$;
 
 --CompressSeats
-create function CompressSeats(in fid int)
+create function CompressSeats(in fid integer)
     returns boolean
     language plpgsql
 as
 $$
 declare
-    pid int;
-    fAvailable
-        boolean;
-    allSeats
-        varchar(4)[];
-    boughtSeats
-        varchar(4)[];
-    reservedSeats
-        varchar(4)[];
-    x
-        varchar(4);
-    i
-        int;
-    nextBought
-        varchar(4)[];
-    nextReserved
-        varchar(4)[];
-    curTime
-        timestamp;
-    curs
-        refcursor;
+    pid           integer;
+    fAvailable    boolean;
+    allSeats      varchar(4)[];
+    boughtSeats   varchar(4)[];
+    reservedSeats varchar(4)[];
+    x             varchar(4);
+    i             integer;
+    nextBought    varchar(4)[];
+    nextReserved  varchar(4)[];
+    curs          refcursor;
 
 begin
     call flightIsAvailable(fid, pid, fAvailable);
@@ -545,18 +451,16 @@ begin
         return false;
     end if;
 
-    curTime
-        = now();
     delete
     from Reserved
-    where EndTime < curTime;
+    where EndTime < now();
 
     allSeats
         = array(select s.SeatNo from Seats s where s.PlaneId = pid order by length(s.SeatNo), s.SeatNo);
     boughtSeats
         = array(select b.SeatNo from Bought b where b.FlightId = fid);
     reservedSeats
-        = array(select r.SeatNo from Reserved r where r.FlightId = fid and r.EndTime >= curTime);
+        = array(select r.SeatNo from Reserved r where r.FlightId = fid and r.EndTime >= now());
 
 
     nextBought
@@ -577,21 +481,18 @@ begin
         end loop;
 
 
-    open curs for select r.SeatNo from Reserved r where r.FlightId = fid and r.EndTime >= curTime;
+    open curs for select r.SeatNo from Reserved r where r.FlightId = fid and r.EndTime >= now();
 
-    i
-        = 1;
+    i = 1;
     loop
         FETCH NEXT FROM curs INTO x;
-        if
-            not found then
+        if not found then
             exit;
         end if;
         update Reserved
         set SeatNo =nextReserved[i]
         where current of curs;
-        i
-            = i + 1;
+        i = i + 1;
     end loop;
 
     return true;
@@ -609,7 +510,7 @@ declare
     res
         boolean;
 begin
-    call flightIsAvailable(400, pid, res);
+    call flightIsAvailable(300, pid, res);
     return res;
 end;
 $$;

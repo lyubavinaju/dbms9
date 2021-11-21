@@ -11,10 +11,10 @@ drop function if exists CompressSeats;
 
 
 
-drop procedure if exists userExists;
+drop function if exists userExists;
 drop procedure if exists flightIsAvailable;
-drop procedure if exists seatExists;
-drop procedure if exists seatIsBought;
+drop function if exists seatExists;
+drop function if exists seatIsBought;
 drop procedure if exists seatIsReserved;
 
 
