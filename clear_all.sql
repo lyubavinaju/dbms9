@@ -16,6 +16,7 @@ drop procedure if exists flightIsAvailable;
 drop function if exists seatExists;
 drop function if exists seatIsBought;
 drop procedure if exists seatIsReserved;
+drop procedure if exists flightStatHelper;
 
 
 drop table if exists Reserved;

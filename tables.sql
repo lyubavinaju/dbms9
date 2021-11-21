@@ -150,6 +150,39 @@ end;
 $$;
 
 
+create function flightStatHelper(in uid integer, in pwd varchar(4))
+    returns table
+            (
+                FlightId integer,
+                fs       integer,
+                rs       bigint,
+                rsByUser bigint,
+                bs       bigint
+            )
+    language plpgsql
+as
+$$
+begin
+    if not userExists(uid, pwd) then
+        return query
+            select 0, 0, cast(0 as bigint), cast(0 as bigint) limit 0;
+    else
+        return query select f.FlightId,
+                            coalesce(array_length(FreeSeats(f.FlightId), 1), 0),
+                            (select count(r.SeatNo) from Reserved r where r.FlightId = f.FlightId and r.EndTime >= now()),
+                            (select count(r.SeatNo)
+                             from Reserved r
+                             where r.FlightId = f.FlightId
+                               and r.EndTime >= now()
+                               and r.UserId = uid),
+                            (select count(b.SeatNo) from Bought b where b.FlightId = f.FlightId)
+                     from Flights f
+                     where f.FlightTime >= now();
+    end if;
+end;
+$$;
+
+
 
 -- 1. FreeSeats(FlightId)
 create function FreeSeats(in fid integer) returns varchar(4)[]
@@ -363,17 +396,7 @@ begin
                        subQuery.fs,
                        subQuery.rs,
                        subQuery.bs
-                from (select f.FlightId,
-                             coalesce(array_length(FreeSeats(f.FlightId), 1), 0)                                           as fs,
-                             (select count(r.SeatNo) from Reserved r where r.FlightId = f.FlightId and r.EndTime >= now()) as rs,
-                             (select count(r.SeatNo)
-                              from Reserved r
-                              where r.FlightId = f.FlightId
-                                and r.EndTime >= now()
-                                and r.UserId = uid)                                                                        as rsByUser,
-                             (select count(b.SeatNo) from Bought b where b.FlightId = f.FlightId)                          as bs
-                      from Flights f
-                      where f.FlightTime >= now()) subQuery;
+                from flightStatHelper(uid, pwd) subQuery;
         end;
     end if;
 end;
@@ -409,18 +432,8 @@ begin
                        subQuery.fs,
                        subQuery.rs,
                        subQuery.bs
-                from (select f.FlightId,
-                             coalesce(array_length(FreeSeats(f.FlightId), 1), 0)                                           as fs,
-                             (select count(r.SeatNo) from Reserved r where r.FlightId = f.FlightId and r.EndTime >= now()) as rs,
-                             (select count(r.SeatNo)
-                              from Reserved r
-                              where r.FlightId = f.FlightId
-                                and r.EndTime >= now()
-                                and r.UserId = uid)                                                                        as rsByUser,
-                             (select count(b.SeatNo) from Bought b where b.FlightId = f.FlightId)                          as bs
-                      from Flights f
-                      where f.FlightId = fid
-                        and f.FlightTime >= now()) subQuery;
+                from flightStatHelper(uid, pwd) subQuery
+                where subQuery.FlightId = fid;
         end;
     end if;
 end;
